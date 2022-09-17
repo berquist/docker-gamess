@@ -1,5 +1,5 @@
 #
-# GAMESS on UBUNTU 16.04
+# GAMESS on UBUNTU 18.04 and newer
 #
 # Build settings:
 # Latest GNU compiler : 5.4
@@ -26,9 +26,9 @@
 #
 # Build argument. Specifies Ubuntu Version used for the Docker build:
 #
-#   --build-arg IMAGE_VERSION=[16.04|12.04|14.04|17.04]
+#   --build-arg IMAGE_VERSION=[18.04|20.04|22.04]
 #
-ARG IMAGE_VERSION=16.04
+ARG IMAGE_VERSION=18.04
 
 FROM ubuntu:$IMAGE_VERSION
 MAINTAINER Sarom Leang "sarom@si.msg.chem.iastate.edu"
@@ -40,11 +40,12 @@ MAINTAINER Sarom Leang "sarom@si.msg.chem.iastate.edu"
 #
 ARG BLAS=none
 
-# Build argument. The current week's GAMESS  source download password.
+# Build argument. Version of GAMESS to compile.  `gamess-${VERSION}.tar.zst`
+# is expected to exist in the build directory.
 #
-#   --build-arg WEEKLY_PASSWORD=password
+#   --build-arg VERSION=2021R2.1
 #
-ARG WEEKLY_PASSWORD=none
+ARG VERSION=none
 
 # Build argument. Flag to reduce docker image size by un-needed files.
 #
@@ -77,13 +78,21 @@ ENV LD_LIBRARY_PATH=/opt/atlas/lib:$LD_LIBRARY_PATH
 
 WORKDIR /usr/local/bin
 
+COPY gamess-${VERSION}.tar.zst .
 COPY gms-docker .
 
-RUN apt-get update && apt-get install -y wget nano csh make gcc gfortran \
-&& echo "\n\n\n\tDowloading GAMESS\n\n\n" \
-   && wget --no-check-certificate --user=source --password=$WEEKLY_PASSWORD http://www.msg.chem.iastate.edu/GAMESS/download/source/gamess-current.tar.gz -O gamess.tar.gz \
-   && tar -xf gamess.tar.gz \
-   && rm -rf gamess.tar.gz \
+RUN apt-get update && apt-get install -y \
+    csh \
+    gcc \
+    gfortran \
+    make \
+    nano \
+    wget \
+    zstd \
+&& echo "\n\n\n\tUnpacking GAMESS\n\n\n" \
+   && tar --use-compress-program=unzstd -xf gamess-${VERSION}.tar.zst \
+   && rm -f gamess-${VERSION}.tar.zst \
+   && mv gamess-${VERSION} gamess \
    && cd /usr/local/bin/gamess \
    && mkdir -p object \
 && echo "\n\n\n\tSetting Up install.info\n\n\n" \
