@@ -1,0 +1,146 @@
+#!/bin/csh
+
+if($argv[1] == "/bin/bash") exec "$argv[1]"
+
+while ($#argv > 0)
+   set val=$argv[1]
+   shift
+   switch ($val)
+      case -b:
+        set EXTBAS=$argv[1]
+        shift
+        breaksw
+      case -l:
+        set LOGFILE=$argv[1]
+        shift
+        breaksw
+      case -p:
+        set NCPUS=$argv[1]
+        shift
+        breaksw
+      default:
+        if ($?JOB == 1) then
+           echo You\'ve given too many input file names, $JOB and $val.
+           exit 4
+        else
+           set JOB=$val
+           if ($JOB =~ *.inp) set JOB=$JOB:r
+        endif
+        breaksw
+   endsw
+end
+#
+if ($?JOB == 0)     set JOB=help
+if ($?LOGFILE == 0) set LOGFILE=default
+if ($?VERNO == 0)   set VERNO=00
+if ($?NCPUS == 0)   set NCPUS=1
+#
+if ($JOB == help) then
+   clear
+   echo "The syntax to execute GAMESS is from the host (arguments in square brackets are optional):"
+   echo " "
+   echo "  docker run --rm -v /path/to/inputs:/home/gamess [-v] image:tag input_file [-l logfile] [-p cores]"
+   echo " "
+   echo "where input_file is the name of your input_file.inp file, and"
+   echo "   -l log_file                          , specify log file name (default: input_file.log)"
+   echo " "
+   echo "Other options,"
+   echo "   -p                                   , how many processors to use (default 1)"
+   echo "   -b /path/to/basis_set_file           , specify an external basis set"
+   echo "   -v /path/to/restart:/home/restart    , map host folder to GAMESS restart folder"
+   echo "   -v /path/to/scratch:/home/scratch    , map host folder to GAMESS scratch folder"
+   echo " "
+   exit
+endif
+#
+set nerr=0
+#
+if ((-e $JOB.inp) || (-e /usr/local/bin/gamess/tests/$JOB.inp) | (-e /usr/local/bin/gamess/tests/standard/$JOB.inp)) then
+else
+   echo I could not find $JOB.inp in your current directory.
+   @ nerr++
+endif
+#
+if (-e /home/gamess/scratch/$JOB.dat) then
+   echo You presently have a PUNCH file named /home/gamess/scratch/$JOB.dat,
+   echo save this data, or delete it, before submitting this job.
+   @ nerr++
+endif
+#
+if (-e /home/gamess/scratch/$JOB.trj) then
+   echo You presently have a TRAJECT file named /home/gamess/scratch/$JOB.trj,
+   echo save this data, or delete it, before submitting this job.
+   @ nerr++
+endif
+#
+if (-e /home/gamess/scratch/$JOB.rst) then
+   echo You presently have a RESTART file named /home/gamess/scratch/$JOB.rst,
+   echo save this data, or delete it, before submitting this job.
+   @ nerr++
+endif
+#
+if (-e /home/gamess/scratch/$JOB.efp) then
+   echo You presently have a MAKEFP file named /home/gamess/scratch/$JOB.efp,
+   echo save this data, or delete it, before submitting this job.
+   @ nerr++
+endif
+#
+if ($nerr > 0) then
+   echo bombing out...
+   exit 4
+endif
+#
+if ($LOGFILE == default) then
+   set LOGFILE=$JOB.log
+endif
+#
+#   prepare the job script
+#
+sed -e /INPUT=\$1/s//INPUT=$JOB/ \
+    -e /VERNO=\$2/s//VERNO=$VERNO/  \
+    -e /NCPUS=\$3/s//NCPUS=$NCPUS/ \
+    /usr/local/bin/gamess/rungms > /home/gamess/scratch/$JOB
+#
+sed -i 's/TARGET=mpi/TARGET=sockets/g' /home/gamess/scratch/$JOB \
+&& sed -i 's/set currentdir=`pwd`/set currentdir=\/usr\/local\/bin\/gamess/g' /home/gamess/scratch/$JOB
+#
+#   special option to use an external basis set library
+#
+if ($?EXTBAS) then
+ if (-e $EXTBAS) then
+   sed -e \\+EXTBAS\ /dev/null+s++EXTBAS\ $EXTBAS+ /home/gamess/scratch/$JOB > /home/gamess/scratch/$JOB.mung
+   mv /home/gamess/scratch/$JOB.mung /home/gamess/scratch/$JOB
+ else
+   echo Your external basis set file $EXTBAS does not exist.
+   echo Please provide the correct fully qualified path name to this file.
+   exit 8
+ endif
+endif
+
+chmod +x /home/gamess/scratch/$JOB
+
+echo "[Running input $JOB on $NCPUS core(s)]"
+echo '   o'
+echo '  o                  ##        .'
+echo '    o          ## ## ##       =='
+echo '   o        ## ## ## ##      ==='
+echo '     o  /""""""""""""""""\\\___/ ==='
+echo '  ~~~ {~~ ~~~~ ~~~ ~~~~ ~~ ~ /  ===- ~~~'
+echo '       \\\______ o          __/         '
+echo '         \\\    \\\        __/          '
+echo '          \\\____\\\______/             '
+echo ''
+
+/home/gamess/scratch/$JOB >& /home/gamess/$LOGFILE
+
+echo ''
+echo "    [Run completed]"
+echo '   o'
+echo '  o                  ##        .'
+echo '    o          ## ## ##       =='
+echo '   o        ## ## ## ##      ==='
+echo '     o  /""""""""""""""""\\\___/ ==='
+echo '  ~~~ {~~ ~~~~ ~~~ ~~~~ ~~ ~ /  ===- ~~~'
+echo '       \\\______ o          __/         '
+echo '         \\\    \\\        __/          '
+echo '          \\\____\\\______/             '
